@@ -29,13 +29,28 @@ __constant__ double param_matrix_d[2 * 52 * TENSOR_CORE_M];
 
 __global__ void kernel2d (const double * __restrict__ in, double * __restrict__ out, const int ldm, const int * __restrict__ lookup_table1, const int * __restrict__ lookup_table2) {
     __shared__ double sharedmem[2][SM_SIZE_ROW * SM_SIZE_COL];
+    // begin为该block的起始地址（x为纵坐标，y为横坐标）
     int begin = IDX(blockIdx.x * BLOCK_SIZE_ROW, blockIdx.y * BLOCK_SIZE_COL + 1, ldm);
     int tid = threadIdx.x;
     int totalThreads = blockDim.x;
 #pragma unroll
+    // block同步填充
     for (int i = tid; i < D_BLOCK_SIZE_ROW * D_BLOCK_SIZE_COL; i += totalThreads) {
+        // 此处的row与col表示的是在lookup_table中的位置
         int row = i / D_BLOCK_SIZE_COL;
         int col = i % D_BLOCK_SIZE_COL;
+        if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
+            printf("sharedmem0_index= %d, sharedmem0_val = in[%d] \n", lookup_table1[i], begin + IDX(row, col, ldm));
+        }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
+            printf("sharedmem1_index= %d, sharedmem1_val = in[%d]\n", lookup_table2[i], begin + IDX(row, col, ldm));
+        }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 7 && lookup_table1[i] <= 20){
+            printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
+        }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 49 && lookup_table1[i] <= 62){
+            printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
+        }
         sharedmem[0][lookup_table1[i]] = in[begin + IDX(row, col, ldm)];
         sharedmem[1][lookup_table2[i]] = in[begin + IDX(row, col, ldm)];
     }
@@ -44,6 +59,7 @@ __global__ void kernel2d (const double * __restrict__ in, double * __restrict__ 
 
     int warp_id = threadIdx.x / 32;
 
+    // 此处param_farg的大小是2*13，每个单元存储一个4*8的权重矩阵，该权重矩阵片段作为matrix_b
     nvcuda::wmma::fragment<wmma::matrix_b, 8, 8, 4, double, wmma::row_major> param_frag[2][MMA_NUM];
 #pragma unroll
     for (int i = 0; i < MMA_NUM; i++) {
@@ -53,9 +69,11 @@ __global__ void kernel2d (const double * __restrict__ in, double * __restrict__ 
 
     wmma::fragment<wmma::accumulator, 8, 8, 4, double> acc_frag;
     wmma::fragment<wmma::matrix_a, 8, 8, 4, double, wmma::row_major> in_frag;
+    // ？
     for (int col = warp_id * 28; col < warp_id * 28 + 28; col += UNIT_LENGTH) {
         wmma::fill_fragment(acc_frag, 0.0);
 #pragma unroll
+        // 这一层循环得到的是Vitrolite A的一个8*8矩阵片段
         for (int compute_idx = 0; compute_idx < MMA_NUM; compute_idx++) {
             wmma::load_matrix_sync(in_frag, sharedmem[0] + IDX(0, col + compute_idx * 4, SM_SIZE_COL), SM_SIZE_COL);
             wmma::mma_sync(acc_frag, in_frag, param_frag[0][compute_idx], acc_frag);
@@ -246,6 +264,8 @@ void gpu_box_2d1r(const double * __restrict__ in, double * __restrict__ out, con
     double param_matrix_h[2][52 * 8] = {0.0};
 
     // Initialize parameter matrix
+    // 此处便于理解：从params矩阵的角度出发，将其按行的顺序一个一个分配到param_matrix_h
+    // col是相对于整个权重矩阵而言的列
     for (int col = 0; col < TENSOR_CORE_M; col++) {
         for(int i = 0; i < UNIT_LENGTH; i++) {
             for(int j = 0; j < UNIT_LENGTH; j++) {
