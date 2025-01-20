@@ -34,23 +34,25 @@ __global__ void kernel2d (const double * __restrict__ in, double * __restrict__ 
     int tid = threadIdx.x;
     int totalThreads = blockDim.x;
 #pragma unroll
-    // block同步填充
+    // tid线程要完成i = tid ,tid + totalThreads * n的填充
     for (int i = tid; i < D_BLOCK_SIZE_ROW * D_BLOCK_SIZE_COL; i += totalThreads) {
         // 此处的row与col表示的是在lookup_table中的位置
         int row = i / D_BLOCK_SIZE_COL;
         int col = i % D_BLOCK_SIZE_COL;
-        if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
-            printf("sharedmem0_index= %d, sharedmem0_val = in[%d] \n", lookup_table1[i], begin + IDX(row, col, ldm));
-        }
-        if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
-            printf("sharedmem1_index= %d, sharedmem1_val = in[%d]\n", lookup_table2[i], begin + IDX(row, col, ldm));
-        }
-        if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 7 && lookup_table1[i] <= 20){
-            printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
-        }
-        if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 49 && lookup_table1[i] <= 62){
-            printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
-        }
+        // if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
+        //     printf("sharedmem0_index= %d, sharedmem0_val = in[%d] \n", lookup_table1[i], begin + IDX(row, col, ldm));
+        // }
+        // if (blockIdx.x == 0 && blockIdx.y == 0 && i < 20){
+        //     printf("sharedmem1_index= %d, sharedmem1_val = in[%d]\n", lookup_table2[i], begin + IDX(row, col, ldm));
+        // }
+        // if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 7 && lookup_table1[i] <= 20){
+        //     printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
+        // }
+        // if (blockIdx.x == 0 && blockIdx.y == 0 && lookup_table1[i] >= 49 && lookup_table1[i] <= 62){
+        //     printf("index= %d  sharedmem0_val = in[%d]\n",lookup_table1[i], begin + IDX(row, col, ldm));
+        // }
+        // 此处作出如下理解：
+        // 将in的那一块block要处理的数据加载进sharedmem，lookup_table给出该数据在sharedmem的索引
         sharedmem[0][lookup_table1[i]] = in[begin + IDX(row, col, ldm)];
         sharedmem[1][lookup_table2[i]] = in[begin + IDX(row, col, ldm)];
     }
